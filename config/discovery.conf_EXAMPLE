@@ -1,0 +1,7 @@
+getManagedSystemData=1
+getLogicalPartitionData=1
+getVswitchData=1
+getClientNetworkAdapterData=1
+getViosData=1
+sendToAsm=1
+maxThreads=10
