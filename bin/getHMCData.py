@@ -403,6 +403,15 @@ def getCna(id):
                print "found associated virtual switch with the id: " +associatedVswitchId + ", connecting to " + id
                connectionDict = { "_fromUniqueId": id, "_toUniqueId": associatedVswitchId, "_edgeType": "connectedTo"}
                connectionsList.append(connectionDict)
+         if(shorttag == "VirtualNetworks"):
+            for avs in entry.getchildren():
+               shorttag = shortenTag(avs.tag)
+               PATTERN = re.compile('.*/VirtualNetwork/(.*)')
+               match = PATTERN.match(avs.attrib["href"])
+               associatedVnetworkId = match.group(1)
+               print "found associated virtual network with the id: " +associatedVnetworkId + ", connecting to " + id
+               connectionDict = { "_fromUniqueId": id, "_toUniqueId": associatedVnetworkId, "_edgeType": "connectedTo"}
+               connectionsList.append(connectionDict)
          else:
             #print "Property " + shorttag + " = " + entry.text + ", attrib = " + str(entry.attrib) 
             cnaDict[shorttag] = entry.text
@@ -479,6 +488,45 @@ def getVswitch(id):
    vSwitchDict["entityTypes"] = [ "switch" ]
 
    return vSwitchDict 
+
+def getVnetwork(id):
+
+   #########################################
+   #
+   # returns a dict with vNetwork information
+   #
+   #########################################
+
+   vNetworkDict = {}
+
+   tagsOfInterest = { "NetworkID", "NetworkMode", "NetworkName" }
+
+   vNetworkDict["vNetworkId"] = id
+
+   msXpath = ".//*[{http://www.w3.org/2005/Atom}id='" + id + "']/{http://www.w3.org/2005/Atom}content/{http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/}VirtualNetwork/*"
+   for entry in vNetworkRoot.findall(msXpath):
+      shorttag = shortenTag(entry.tag)
+      #if(shorttag in tagsOfInterest):
+      #   print "getting vNetwork property " + shorttag
+      if(shorttag == 'AssociatedSwitch'):
+         print "here is an associated switch, let's see if we can grab it..."
+         PATTERN = re.compile('.*/VirtualSwitch/(.*)')
+         match = PATTERN.match(entry.attrib["href"])
+         associatedVswitchId = match.group(1)
+         print "found associated virtual switch with the id: " +associatedVswitchId + ", connecting this interface"
+         vNetworkDict["AssociatedSwitch"] = associatedVswitchId
+         connectionDict = { "_fromUniqueId": id, "_toUniqueId": associatedVswitchId, "_edgeType": "connectedTo"}
+         connectionsList.append(connectionDict)
+      else:
+         vNetworkDict[shorttag] = entry.text
+
+## relevant ASM key mappings
+
+   vNetworkDict["uniqueId"] = id
+   vNetworkDict["name"] = vNetworkDict["NetworkName"]
+   vNetworkDict["entityTypes"] = [ "network" ]
+
+   return vNetworkDict 
 
 def getLpar(id):
 
@@ -591,6 +639,7 @@ def dispatchHmc(hmcDict, asmServerDict):
    getManagedSystemData = 1
    getLogicalPartitionData = 1
    getVswitchData = 1
+   getVnetworkData = 1
    getClientNetworkAdapterData = 1
    getViosData = 1
    sendToAsm = 1
@@ -877,6 +926,47 @@ def dispatchHmc(hmcDict, asmServerDict):
                viosCount = viosCount + 1
    
             print "number of VIOS for server " + ms["Hostname"] + " is " + str(viosCount)
+
+   ######################################################
+   #
+   # For each managed system, obtain its virtual networks
+   #
+   ######################################################
+
+   vNetworkList = []
+   global vNetworkRoot
+
+   if getVnetworkData == 1:
+
+      for ms in managedSystemList:
+         print "obtaining virtual networks for managed system id: " + ms["managedSystemId"]
+         virtualNetworkData = getUomData(hmcDict, "/ManagedSystem/" + ms["managedSystemId"] + "/VirtualNetwork")
+         try:
+            vNetworkRoot = ET.fromstring(virtualNetworkData)
+            vNetworkCount = 0
+            for vNetworkEntry in vNetworkRoot.findall('.//{http://www.w3.org/2005/Atom}entry'):
+               newNetwork = {}
+               #print "vNetwork entry #" + str(vNetworkCount)
+               for vNetworkData in vNetworkEntry:
+                  if(vNetworkData.tag == '{http://www.w3.org/2005/Atom}id'):
+                     vNetworkId = vNetworkData.text
+                     #print "found vNetwork entry with id of " + vNetworkId
+                     connectionDict = { "_fromUniqueId": vNetworkId, "_toUniqueId": ms["managedSystemId"], "_edgeType": "runsOn"}
+                     connectionsList.append(connectionDict)
+                     newNetwork = getVnetwork(vNetworkId)
+                     newNetwork["NetworkName"] = newNetwork["NetworkName"] + " on " + ms["Hostname"]
+                     vNetworkList.append(newNetwork)
+
+               vNetworkCount = vNetworkCount + 1
+            if(logXmlOutput == 1):
+               fh = open(mediatorHome + "/log/" + hmcServer + "-" + ms["name"] + "-virtualNetworkData.xml", "w")
+               fh.write(virtualNetworkData)
+               fh.write("\n")
+               fh.close
+         except:
+            print "No vNetwork data returned for managed system id: "  + ms["managedSystemId"]
+
+         #print virtualSwitchData
    
    
    #### Data collection complete
@@ -911,6 +1001,8 @@ def dispatchHmc(hmcDict, asmServerDict):
          createAsmResource(trunk)
       for sea in seaList:
          createAsmResource(sea)
+      for vnetwork in vNetworkList:
+         createAsmResource(vnetwork)
       for connection in connectionsList:
          createAsmConnection(connection)
          
@@ -923,13 +1015,18 @@ def dispatchHmc(hmcDict, asmServerDict):
    #
    ######################################################
    #print "these are the managed system ids:"
-   #for ms in managedSystemList:
-   #    print ms["managedSystemId"]
-   #    virtualNetworkData = getUomData(hmcDict, "/ManagedSystem/" + id + "/VirtualNetwork/")
-   #fh = open("virtualNetworkData.xml", "w")
-   #fh.write(virtualNetworkData)
-   #fh.write("\n")
-   #fh.close
+   for ms in managedSystemList:
+       virtualNetworkData = getUomData(hmcDict, "/ManagedSystem/" + id + "/VirtualNetwork/")
+
+   if(logXmlOutput == 1):
+      fh = open(mediatorHome + "/log/" + hmcServer + "-" + ms["name"] + "-virtualData.xml", "w")
+      fh.write(virtualSwitchData)
+      fh.write("\n")
+      fh.close
+   fh = open("virtualNetworkData.xml", "w")
+   fh.write(virtualNetworkData)
+   fh.write("\n")
+   fh.close
    ######################
    #
    # For each managed system, obtain host ethernet adapters
