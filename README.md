@@ -1,14 +1,14 @@
 This package allows integration of HMC topology information into the ASM topology. It 
 collects data from the HMC REST interface for the following objects:
 
-ManagedSystem - Hypervisor information
-LogicalPartition - LPARs and relationship to ManagedSystem
-VirtualSwitch - Virtual switch(es) that are configured on managed systems, and the LPAR
-                and VIOS interfaces that connect to them
-ClientAdapters - Virtual Network Adapters that are configured on LPARs, and their
-                 connections to Virtual Switches
-TrunkAdapters - VIOS trunk adapters
-SharedEthernetAdapters - VIOS Shared Ethernet Adapters
+**ManagedSystem** - Hypervisor information<br>
+**LogicalPartition** - LPARs and relationship to ManagedSystem<br>
+**VirtualSwitch** - Virtual switch(es) that are configured on managed systems, and the LPAR
+                and VIOS interfaces that connect to them<br>
+**ClientAdapters** - Virtual Network Adapters that are configured on LPARs, and their
+                 connections to Virtual Switches<br>
+**TrunkAdapters** - VIOS trunk adapters<br>
+**SharedEthernetAdapters** - VIOS Shared Ethernet Adapters<br>
 
 
 Configuring the topology mediator:
